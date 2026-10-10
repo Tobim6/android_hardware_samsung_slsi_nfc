@@ -190,6 +190,17 @@ uint8_t* nfc_hal_get_update_image(int type, bool force, bool* need_update) {
   info.selected = decide_image(&info);
   free_not_selected_image(&info);
 
+  // decide_image() returns NULL both when nothing was found at all and
+  // (ambiguously) when info.image2 itself is NULL, since info.image1 is
+  // never populated by this caller. Without this explicit NULL check, a
+  // missing RF/HW reg image collapses into the "SYS image is selected"
+  // branch below (NULL == NULL), and info.selected->binary is dereferenced
+  // further down -- a null pointer crash instead of a clean "not found".
+  if (info.selected == NULL) {
+    OSI_loge("Cannot decide any image");
+    return NULL;
+  }
+
   if (info.selected == info.image2)
     OSI_logd("SYS image is selected");
   else {
