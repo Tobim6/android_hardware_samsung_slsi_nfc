@@ -309,25 +309,33 @@ bool nfc_rf_getver_from_image(tNFC_HAL_VS_INFO* vs) {
   uint8_t value[16];
   int position = 16;  // Default position of version information
 
-  memcpy(value, &vs->rfreg[vs->rfreg_size - position], 16);
+  // vs->rfreg/vs->swreg are only populated by hal_vs_get_rf_image() when
+  // their respective source binary was actually found (e.g. a config
+  // lookup failure, missing file, or dual-option device where only one of
+  // HW_REG/SW_REG resolved). Skip each half independently rather than
+  // dereferencing a null/stale pointer -- this previously crashed reading
+  // vs->rfreg[vs->rfreg_size - position] when rfreg was never set.
+  if (vs->rfreg != NULL) {
+    memcpy(value, &vs->rfreg[vs->rfreg_size - position], 16);
 
-  memcpy(vs->rfreg_img_version, value + 5, 5);    // Version information (time)
-  if (!vs->is_dual_option_supported) {
-    memcpy(vs->rfreg_img_version + 5, value + 12, 3);  // ID (csc code)
+    memcpy(vs->rfreg_img_version, value + 5, 5);    // Version information (time)
+    if (!vs->is_dual_option_supported) {
+      memcpy(vs->rfreg_img_version + 5, value + 12, 3);  // ID (csc code)
+    }
+
+    if (SNFC_N74 <= bl->version[0]) {
+      nfc_hal_info.vs_info.rfreg_img_number_version[0] =
+          value[0] >> 4;  // main version
+      nfc_hal_info.vs_info.rfreg_img_number_version[1] =
+          value[0] & (~(0xf << 4));  // sub version
+      nfc_hal_info.vs_info.rfreg_img_number_version[2] =
+          value[1];  // patch version
+      nfc_hal_info.vs_info.rfreg_img_number_version[3] =
+          value[11];  // minor version (number version)
+    }
   }
 
-  if (SNFC_N74 <= bl->version[0]) {
-    nfc_hal_info.vs_info.rfreg_img_number_version[0] =
-        value[0] >> 4;  // main version
-    nfc_hal_info.vs_info.rfreg_img_number_version[1] =
-        value[0] & (~(0xf << 4));  // sub version
-    nfc_hal_info.vs_info.rfreg_img_number_version[2] =
-        value[1];  // patch version
-    nfc_hal_info.vs_info.rfreg_img_number_version[3] =
-        value[11];  // minor version (number version)
-  }
-
-  if (vs->is_dual_option_supported) {
+  if (vs->is_dual_option_supported && vs->swreg != NULL) {
     memcpy(value, &vs->swreg[vs->swreg_size - position], 16);
 
     memcpy(vs->swreg_img_version, value + 5, 5);  // Version information (time)
